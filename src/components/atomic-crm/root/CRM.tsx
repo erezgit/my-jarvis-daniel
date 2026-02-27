@@ -269,6 +269,7 @@ const DesktopAdmin = (props: CoreAdminProps) => {
       {features.members && <Resource name="members" {...members} />}
       {features.tags && <Resource name="tags" />}
       {features.orders && <Resource name="orders" {...orders} />}
+      <Resource name="page_content" />
     </Admin>
   );
 };

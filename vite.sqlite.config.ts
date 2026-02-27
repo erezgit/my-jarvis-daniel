@@ -22,7 +22,7 @@ export default defineConfig({
       },
     }),
   ],
-  base: "./",
+  base: "/preview/",
   esbuild: {
     keepNames: true,
   },

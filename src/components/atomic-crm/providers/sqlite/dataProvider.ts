@@ -15,7 +15,7 @@ import { getActivityLog } from "../commons/activity";
 import type { CrmDataProvider } from "../types";
 import { mergeContacts as clientMergeContacts } from "../commons/mergeContacts";
 
-const API_URL = "/api";
+const API_URL = `${import.meta.env.BASE_URL}api`;
 
 async function fetchJson(url: string, options?: RequestInit) {
   const response = await fetch(url, {

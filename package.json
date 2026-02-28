@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest",
-    "dev": "vite --force",
+    "dev": "vite --config vite.sqlite.config.ts --force",
     "dev:demo": "vite --config vite.demo.config --force",
     "dev:sqlite": "vite --config vite.sqlite.config --force",
     "server:sqlite": "tsx server/index.ts",

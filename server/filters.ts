@@ -288,6 +288,13 @@ const VALID_COLUMNS = new Set([
   "contact_last_name",
   "member_first_name",
   "member_last_name",
+  // page_content columns
+  "page_slug",
+  "content",
+  // kb_pages columns
+  "slug",
+  "icon",
+  "sort_order",
 ]);
 
 function sanitizeColumn(name: string): string | null {

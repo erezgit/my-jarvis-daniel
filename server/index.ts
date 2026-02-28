@@ -9,6 +9,29 @@ const PORT = parseInt(process.env.API_PORT || "3001", 10);
 app.use(cors());
 app.use(express.json());
 
+// =====================
+// SSE — push data-change notifications to connected browsers
+// =====================
+const sseClients = new Set<import("express").Response>();
+
+function broadcast(resource: string) {
+  const msg = `data: ${JSON.stringify({ resource })}\n\n`;
+  for (const client of sseClients) {
+    client.write(msg);
+  }
+}
+
+app.get("/api/events", (_req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write("\n"); // flush headers
+  sseClients.add(res);
+  _req.on("close", () => sseClients.delete(res));
+});
+
 // Initialize database schema
 initSchema();
 
@@ -27,6 +50,8 @@ const JSON_COLUMNS: Record<string, string[]> = {
   orders: [],
   tasks: [],
   tags: [],
+  kb_pages: [],
+  page_content: ["content"],
 };
 
 // Tables that have summary views
@@ -52,6 +77,8 @@ const VALID_RESOURCES = new Set([
   "tasks",
   "members",
   "tags",
+  "kb_pages",
+  "page_content",
   "contacts_summary",
   "companies_summary",
   "orders_summary",
@@ -273,6 +300,104 @@ app.post("/api/custom/merge-contacts", (req, res) => {
 });
 
 // =====================
+// KB Pages Endpoints
+// =====================
+
+// GET /api/kb_pages — list all, ordered by sort_order
+app.get("/api/kb_pages", (_req, res) => {
+  try {
+    const rows = db.prepare("SELECT * FROM kb_pages ORDER BY sort_order ASC").all();
+    const total = (rows as any[]).length;
+    res.set("Content-Range", `kb_pages 0-${Math.max(total - 1, 0)}/${total}`);
+    res.set("Access-Control-Expose-Headers", "Content-Range");
+    res.json(rows);
+  } catch (err: any) {
+    console.error("GET /api/kb_pages error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/kb_pages/:id — get one by id
+app.get("/api/kb_pages/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const row = db.prepare("SELECT * FROM kb_pages WHERE id = ?").get(id);
+    if (!row) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    res.json(row);
+  } catch (err: any) {
+    console.error("GET /api/kb_pages/:id error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/kb_pages — create new
+app.post("/api/kb_pages", (req, res) => {
+  try {
+    const { slug, title, icon, sort_order } = req.body;
+    const result = db
+      .prepare(
+        "INSERT INTO kb_pages (slug, title, icon, sort_order) VALUES (?, ?, ?, ?)"
+      )
+      .run(slug, title, icon ?? "FileText", sort_order ?? 0);
+    const row = db.prepare("SELECT * FROM kb_pages WHERE id = ?").get(result.lastInsertRowid);
+    broadcast("kb_pages");
+    res.status(201).json(row);
+  } catch (err: any) {
+    console.error("POST /api/kb_pages error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/kb_pages/:id — update
+app.put("/api/kb_pages/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slug, title, icon, sort_order } = req.body;
+
+    const existing = db.prepare("SELECT * FROM kb_pages WHERE id = ?").get(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    db.prepare(
+      `UPDATE kb_pages SET
+        slug = COALESCE(?, slug),
+        title = COALESCE(?, title),
+        icon = COALESCE(?, icon),
+        sort_order = COALESCE(?, sort_order),
+        updated_at = datetime('now')
+      WHERE id = ?`
+    ).run(slug ?? null, title ?? null, icon ?? null, sort_order ?? null, id);
+
+    const row = db.prepare("SELECT * FROM kb_pages WHERE id = ?").get(id);
+    broadcast("kb_pages");
+    res.json(row);
+  } catch (err: any) {
+    console.error("PUT /api/kb_pages/:id error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/kb_pages/:id — delete
+app.delete("/api/kb_pages/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    const row = db.prepare("SELECT * FROM kb_pages WHERE id = ?").get(id);
+    if (!row) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    db.prepare("DELETE FROM kb_pages WHERE id = ?").run(id);
+    broadcast("kb_pages");
+    res.json(row);
+  } catch (err: any) {
+    console.error("DELETE /api/kb_pages/:id error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================
 // Generic CRUD Endpoints (wildcard :resource — MUST come after fixed routes)
 // =====================
 
@@ -391,6 +516,7 @@ app.post("/api/:resource", (req, res) => {
     const row = db
       .prepare(`SELECT * FROM ${table} WHERE id = ?`)
       .get(result.lastInsertRowid);
+    broadcast(resource);
     res.status(201).json(parseRow(resource, row));
   } catch (err: any) {
     console.error("POST /api/:resource error:", err);
@@ -423,6 +549,7 @@ app.put("/api/:resource/:id", (req, res) => {
     if (!row) {
       return res.status(404).json({ error: "Not found" });
     }
+    broadcast(resource);
     res.json(parseRow(resource, row));
   } catch (err: any) {
     console.error("PUT /api/:resource/:id error:", err);
@@ -446,6 +573,7 @@ app.delete("/api/:resource/:id", (req, res) => {
     }
 
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    broadcast(resource);
     res.json(parseRow(resource, row));
   } catch (err: any) {
     console.error("DELETE /api/:resource/:id error:", err);

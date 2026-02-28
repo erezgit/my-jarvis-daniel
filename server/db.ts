@@ -175,6 +175,17 @@ export function initSchema() {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- KB Pages
+    CREATE TABLE IF NOT EXISTS kb_pages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      icon TEXT DEFAULT 'FileText',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
     -- Documents registry (metadata for files on the volume)
     CREATE TABLE IF NOT EXISTS documents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
